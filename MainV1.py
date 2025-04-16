@@ -2,6 +2,7 @@ import os
 import sqlite3
 import requests
 import json
+import importlib.metadata
 from duckduckgo_search import DDGS
 from newspaper import Article
 from bs4 import BeautifulSoup
@@ -19,6 +20,7 @@ class NewsProcessor:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
+        # Crear tablas si no existen
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS noticias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +40,11 @@ class NewsProcessor:
                 guion TEXT
             )
         """)
+
+        # Limpiar las tablas al inicio
+        cursor.execute("DELETE FROM noticias")
+        cursor.execute("DELETE FROM scripts")
+        print("🧹 Tablas 'noticias' y 'scripts' limpiadas.")
 
         conn.commit()
         conn.close()
@@ -81,22 +88,29 @@ class NewsProcessor:
             print(f"BeautifulSoup extraction failed: {e}")
             return "No se pudo extraer contenido"
 
+
+
     def _improve_search_query(self, query):
         prompt = f"""
         Mejora este título de búsqueda de noticias: "{query}".
-        Devuelve la respuesta en formato JSON con la clave 'titulo_mejorado'.
+        Devuelve la respuesta en formato JSON con dos claves:
+        1. 'titulo_mejorado': El título mejorado para la búsqueda
+        2. 'keywords': Una lista de 5-8 palabras clave relevantes que ayudarán a encontrar resultados más precisos
 
         Ejemplo de respuesta:
         {{
-            "titulo_mejorado": "Últimas noticias sobre avances tecnológicos"
+            "titulo_mejorado": "Últimas noticias sobre avances tecnológicos en exploración espacial",
+            "keywords": ["NASA", "SpaceX", "telescopio espacial", "misión Mars", "astronomía", "satélites", "exoplanetas"]
         }}
         """
+
         try:
             respuesta = ollama.chat(model=self.model_name, messages=[{"role": "user", "content": prompt}])
             return json.loads(respuesta['message']['content'])
         except Exception as e:
             print(f"Error improving search query: {e}")
-            return {"titulo_mejorado": query}
+            return {"titulo_mejorado": query, "keywords": []}
+
 
     def _evaluate_news(self, noticia, target_search):
         titulo = noticia["titulo"]
@@ -132,6 +146,10 @@ class NewsProcessor:
         Devuelve un JSON con la clave 'guion'. No incluyas saludos, introducciones ni menciones a que es un video.
         El guion debe ser corto, directo, en minúsculas y en un solo párrafo.
 
+        Además:
+        - Si hay siglas (como NASA o ISS), sepáralas con espacios para que se lean letra por letra (ej. "I S S").
+        - Si hay unidades como "cm", "km/h" o "kg", reemplázalas por su pronunciación completa en español ("centímetros", "kilómetros por hora", "kilogramos", etc).
+        
         Ejemplo:
         {{
             "guion": "francia ha logrado un hito histórico al mantener el plasma activo por 22 minutos a cien millones de grados celsius..."
@@ -182,11 +200,18 @@ class NewsProcessor:
 
         improved = self._improve_search_query(query)
         improved_query = improved.get('titulo_mejorado', query)
+        improved_query = f"{improved_query}"
+        keywords = improved.get('keywords', [])
+        keywords = ' intitle:'.join(keywords)
+
         print(f"📝 Improved query: {improved_query}")
+        print(f"🔑 Keywords: {keywords}")
+
+
 
         with DDGS() as ddgs:
             results = list(
-                ddgs.news(improved_query, region="es-en", safesearch="off", max_results=num_results, timelimit="w"))
+                ddgs.news(improved_query, safesearch="off",region="wt-wt", max_results=num_results, timelimit="w"))
 
         for news in results:
             url = news["url"]
@@ -239,7 +264,7 @@ class NewsProcessor:
             conn.commit()
         conn.close()
 
-    def summarize_top_news(self, min_rating=9, limit=5):
+    def summarize_top_news(self, min_rating=8, limit=5):
         articles = self.fetch_top_rated_news(min_rating, limit)
         if not articles:
             print("⚠️ No hay artículos para resumir.")
@@ -249,7 +274,7 @@ class NewsProcessor:
                                 for _, t, c, f, d in articles])
 
         prompt = f"""
-        A partir de las siguientes noticias, genera un resumen con los puntos más relevantes en formato de ranking (Top 5) basado en su relevancia internacional:
+        A partir de las siguientes noticias, genera un resumen con los puntos más relevantes en formato de ranking (Top 5) basado en su relevancia internacional, evita incluir en el ranking noticias repetidas:
 
         {resumenes}
 
@@ -321,6 +346,8 @@ class NewsProcessor:
 
 
 if __name__ == "__main__":
+    version = importlib.metadata.version('duckduckgo_search')
+    print(f"La versión de tu_libreria es: {version}")
     SEARCH_QUERY = "Noticias sobre ciencia, el universo, el espacio y exploracion espacial"
     TARGET_SEARCH = "Noticias sobre ciencia, el universo, el espacio y exploracion espacial"
 

@@ -1,0 +1,23 @@
+Audio Generation Log - 2025-04-16 16:04:26
+================================================================================
+
+Script 1: Un avance en la lucha contra el cáncer: cómo es el dispositivo que pueden potenciar la inmunoterapia
+Text: el dispositivo implantable llama 'fábrica de citokinas il-12' podría ofrecer nuevas alternativas en la lucha contra cánceres difíciles de tratar. libera interleucina-12 localmente alrededor del tumor, despertando a un sistema inmunológico fuerte que ataca y destruye el cáncer sin afectar al resto del cuerpo.
+Combined audio: audio_output/1_Un_avance_en_la_lucha_contra_e_combined.wav
+--------------------------------------------------------------------------------
+
+Script 2: Proponen una teoría "mejorada y radicalmente diferente" de explicar la evolución del universo
+Text: un nuevo estudio propone una alternativa a la teoría convencional sobre la expansión del universo, sugiriendo que las 'explosiones' rápidas de materia y energía podrían ser la causa. estas 'singularidades de densidad en el tiempo' serían lo que tradicionalmente se ha pensado que es la materia oscura y la energía oscura. el artículo fue publicado recientemente en la revista Classical and Quantum Gravity por el dr. richard lieu, profesor de física en la universidad de alabama, en huntsville.
+Combined audio: audio_output/2_Proponen_una_teoría_"mejorada__combined.wav
+--------------------------------------------------------------------------------
+
+Script 3: El fenómeno cósmico oculto que brillará más que la Luna y cambiará todo lo que sabemos del universo
+Text: enanas blancas en nuestro vecindario cósmico están destinos a explotar y se convierten en una supernova de tipo i a dentro de miles de millones de años. un sistema binario recientemente descubierto, wdj181058.67+311940.94, es el primer candidato claro para este evento y podría revelar la solución al misterio de las supernovas de tipo i a.
+Combined audio: audio_output/3_El_fenómeno_cósmico_oculto_que_combined.wav
+--------------------------------------------------------------------------------
+
+Script 4: Este es el valor del euro hoy según el Banco Central Europeo: los cambios más recientes
+Text: en contexto de incertidumbre económica global y cambios geopolíticos, analicemos el valor del euro: hoy en día, un euro valora 1,1045 dólares estadounidenses, 159,61 yenes japoneses, 1,9558 levs búlgaros, entre otros.
+Audio file(s): audio_output/4_este-es-el-valor-del-euro-hoy-.wav
+--------------------------------------------------------------------------------
+
