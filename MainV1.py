@@ -167,10 +167,10 @@ class NewsProcessor:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, titulo, contenido 
-            FROM noticias 
-            WHERE calificacion >= ? 
-            ORDER BY calificacion DESC 
+            SELECT id, titulo, contenido, fuente, fecha
+            FROM noticias
+            WHERE calificacion >= ?
+            ORDER BY calificacion DESC
             LIMIT ?
         """, (min_rating, limit))
         articles = cursor.fetchall()
@@ -239,13 +239,37 @@ class NewsProcessor:
             conn.commit()
         conn.close()
 
+    def summarize_top_news(self, min_rating=9, limit=5):
+        articles = self.fetch_top_rated_news(min_rating, limit)
+        if not articles:
+            print("⚠️ No hay artículos para resumir.")
+            return
+
+        resumenes = "\n".join([f"Título: {t}\nFuente: {f}\nFecha: {d}\nContenido: {c[:300]}..."
+                                for _, t, c, f, d in articles])
+
+        prompt = f"""
+        A partir de las siguientes noticias, genera un resumen con los puntos más relevantes en formato de ranking (Top 5) basado en su relevancia internacional:
+
+        {resumenes}
+
+        Devuelve un texto con los 5 titulares más destacados y por qué son importantes.
+        """
+        try:
+            response = ollama.chat(model=self.model_name, messages=[{"role": "user", "content": prompt}])
+            resumen = response['message']['content']
+            print("\n🧠 Top noticias relevantes:\n")
+            print(resumen)
+        except Exception as e:
+            print(f"❌ Error al generar resumen: {e}")
+
     def generate_scripts(self, min_rating=9, limit=5):
         articles = self.fetch_top_rated_news(min_rating, limit)
         print(f"📖 Processing {len(articles)} articles with rating >= {min_rating}...")
 
         scripts_saved = 0
 
-        for article_id, title, content in articles:
+        for article_id, title, content, *_ in articles:
             print(f"🔍 Generating script for: {title}")
             script = self._generate_script(title, content)
 
@@ -287,7 +311,10 @@ class NewsProcessor:
         print("\n==== STEP 2: EVALUATE NEWS ====")
         self.evaluate_all_news(target_search)
 
-        print("\n==== STEP 3: GENERATE SCRIPTS ====")
+        print("\n==== STEP 3: TOP RELEVANT NEWS SUMMARY ====")
+        self.summarize_top_news()
+
+        print("\n==== STEP 4: GENERATE SCRIPTS ====")
         self.generate_scripts()
 
         print("\n✅ Pipeline finished successfully!")
