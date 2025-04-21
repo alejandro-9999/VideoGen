@@ -10,10 +10,13 @@ from datetime import datetime
 
 # Try to download NLTK tokenizers if not already present
 try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
     nltk.download('punkt')
-
+    nltk.download('punkt_tab')
+    print("inicia la app")
+    nltk.data.find('tokenizers/punkt')
+except Exception:
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
 
 class ScriptAudioGenerator:
     def __init__(self, db_name="data.db", output_dir="audio_output",
