@@ -4,9 +4,10 @@ import sqlite3
 import requests
 import random
 import time
+import ffmpeg
+import subprocess
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import *
 from duckduckgo_search import DDGS
 from io import BytesIO
 import ollama
@@ -242,8 +243,46 @@ class VideoGenerator:
 
         return image_paths
 
+    def _create_title_image(self, title, img_path, output_path):
+        """Add a title overlay to the image."""
+        try:
+            img = Image.open(img_path)
+            # Create a semi-transparent overlay
+            overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+
+            # Draw a semi-transparent rectangle at the bottom
+            draw.rectangle([(0, img.height - 100), (img.width, img.height)], fill=(0, 0, 0, 128))
+
+            # Add text if font is available
+            if self.font_path:
+                try:
+                    font = ImageFont.truetype(self.font_path, 40)
+                    # Center text
+                    text_width = draw.textlength(title, font=font)
+                    text_position = ((img.width - text_width) // 2, img.height - 70)
+
+                    draw.text(text_position, title, fill=(255, 255, 255, 255), font=font)
+                except Exception as e:
+                    print(f"⚠️ Font error when adding title: {e}")
+                    # Fallback to default text drawing
+                    draw.text((img.width // 4, img.height - 70), title, fill=(255, 255, 255, 255))
+            else:
+                draw.text((img.width // 4, img.height - 70), title, fill=(255, 255, 255, 255))
+
+            # Combine the original image with the overlay
+            img = img.convert('RGBA')
+            result = Image.alpha_composite(img, overlay)
+            result = result.convert('RGB')
+            result.save(output_path)
+
+            return output_path
+        except Exception as e:
+            print(f"⚠️ Error adding title to image: {e}")
+            return img_path  # Return original image if failed
+
     def _create_video(self, script_id, title, text, audio_path, output_file):
-        """Create a video with the script audio and related images."""
+        """Create a video with the script audio and related images using ffmpeg."""
         print(f"\n🎬 Creating video for script {script_id}: {title}")
 
         # Get images related to the script
@@ -252,93 +291,115 @@ class VideoGenerator:
             print("❌ No images available for video creation")
             return None
 
-        # Load the audio file(s)
-        if isinstance(audio_path, list):
-            # Multiple audio chunks
-            print(f"🔊 Loading {len(audio_path)} audio chunks")
-            audio_clips = [AudioFileClip(path) for path in audio_path]
-            audio_clip = concatenate_audioclips(audio_clips)
-        else:
-            # Single audio file
-            print(f"🔊 Loading audio: {os.path.basename(audio_path)}")
-            audio_clip = AudioFileClip(audio_path)
+        # Create a temp directory for processed images
+        temp_dir = os.path.join(self.output_dir, f"temp_{script_id}")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
 
-        # Calculate total duration of the audio
-        audio_duration = audio_clip.duration
-        print(f"⏱️ Audio duration: {audio_duration:.2f} seconds")
-
-        # Calculate how long each image should be shown
-        num_images = len(images)
-        image_duration = audio_duration / num_images
-
-        # Create image clips
-        image_clips = []
+        # Process images to have consistent dimensions
+        processed_images = []
         for i, img_path in enumerate(images):
             try:
-                # Calculate start and end times for this image
-                start_time = i * image_duration
-                end_time = (i + 1) * image_duration
-                if i == num_images - 1:
-                    # Make sure the last image extends to the end of the audio
-                    end_time = audio_duration
+                # Open and resize the image
+                img = Image.open(img_path)
+                # Resize maintaining aspect ratio
+                img.thumbnail((1280, 720))
 
-                # Create ImageClip with proper duration
-                img_clip = ImageClip(img_path).set_duration(end_time - start_time)
+                # Create a new image with black background
+                new_img = Image.new('RGB', (1280, 720), (0, 0, 0))
 
-                # Resize to 1280x720 (16:9) maintaining aspect ratio
-                img_clip = img_clip.resize(height=720)
-                # If width is greater than 1280, crop to 1280
-                if img_clip.size[0] > 1280:
-                    img_clip = img_clip.crop(x1=(img_clip.size[0] - 1280) // 2, y1=0,
-                                             x2=(img_clip.size[0] + 1280) // 2, y2=720)
-                # If width is less than 1280, pad with black
-                elif img_clip.size[0] < 1280:
-                    # Create a black background
-                    bg = ColorClip(size=(1280, 720), color=(0, 0, 0))
-                    bg = bg.set_duration(img_clip.duration)
-                    # Position the image in the center
-                    img_clip = img_clip.set_position(('center', 'center'))
-                    img_clip = CompositeVideoClip([bg, img_clip])
+                # Paste the resized image centered
+                paste_x = (1280 - img.width) // 2
+                paste_y = (720 - img.height) // 2
+                new_img.paste(img, (paste_x, paste_y))
 
-                # Add a title caption to the first image
+                # Add title to the first image
                 if i == 0:
-                    txt_clip = TextClip(title, fontsize=30, color='white', bg_color='rgba(0,0,0,0.5)',
-                                        font=self.font_path if self.font_path else None)
-                    txt_clip = txt_clip.set_position(('center', 'bottom')).set_duration(end_time - start_time)
-                    img_clip = CompositeVideoClip([img_clip, txt_clip])
+                    titled_img_path = os.path.join(temp_dir, f"titled_img_{i}.jpg")
+                    self._create_title_image(title, img_path, titled_img_path)
+                    processed_path = os.path.join(temp_dir, f"proc_img_{i}.jpg")
+                    new_img.save(processed_path)
+                    processed_images.append((titled_img_path, processed_path))
+                else:
+                    processed_path = os.path.join(temp_dir, f"proc_img_{i}.jpg")
+                    new_img.save(processed_path)
+                    processed_images.append((processed_path,))
 
-                # Set the position to match the audio timing
-                img_clip = img_clip.set_start(start_time)
-
-                image_clips.append(img_clip)
-                print(f"✅ Added image {i + 1}/{num_images}")
-
+                print(f"✅ Processed image {i + 1}/{len(images)}")
             except Exception as e:
                 print(f"❌ Error processing image {img_path}: {e}")
-                continue
 
-        if not image_clips:
-            print("❌ No valid image clips to create video")
+        if not processed_images:
+            print("❌ No processed images available")
             return None
 
-        # Create final video
+        # Create a temporary file for the FFmpeg input
+        list_file = os.path.join(temp_dir, "image_list.txt")
+
+        # Determine total audio duration
+        if isinstance(audio_path, list):
+            # Multiple audio chunks that need to be concatenated
+            audio_concat_list = os.path.join(temp_dir, "audio_concat.txt")
+            with open(audio_concat_list, 'w') as f:
+                for audio in audio_path:
+                    f.write(f"file '{os.path.abspath(audio)}'\n")
+
+            # Create a concatenated audio file
+            concat_audio_path = os.path.join(temp_dir, "concat_audio.wav")
+            subprocess.run([
+                'ffmpeg', '-f', 'concat', '-safe', '0',
+                '-i', audio_concat_list, '-c', 'copy', concat_audio_path
+            ], check=True)
+            audio_path = concat_audio_path
+
+        # Get audio duration
+        probe = ffmpeg.probe(audio_path)
+        audio_duration = float(probe['format']['duration'])
+        print(f"⏱️ Audio duration: {audio_duration:.2f} seconds")
+
+        # Calculate duration for each image
+        image_duration = audio_duration / len(processed_images)
+
+        # Create the image sequence file for FFmpeg
+        with open(list_file, 'w') as f:
+            for i, img_tuple in enumerate(processed_images):
+                # Use the titled image for the first one if available
+                if i == 0 and len(img_tuple) > 1:
+                    img_path = img_tuple[0]  # Titled image
+                else:
+                    img_path = img_tuple[0]  # Regular processed image
+
+                if i < len(processed_images) - 1:
+                    f.write(f"file '{os.path.abspath(img_path)}'\n")
+                    f.write(f"duration {image_duration}\n")
+                else:
+                    # Last image doesn't need duration
+                    f.write(f"file '{os.path.abspath(img_path)}'\n")
+
         try:
-            video = CompositeVideoClip(image_clips)
-            video = video.set_audio(audio_clip)
+            # Create video from images
+            print("🎞️ Creating video from images...")
+            temp_video = os.path.join(temp_dir, "temp_video.mp4")
 
-            # Add a fade in/out effect
-            video = video.fadein(0.5).fadeout(0.5)
+            # Use ffmpeg to create video from images
+            subprocess.run([
+                'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                '-i', list_file, '-vsync', 'vfr',
+                '-vf', 'fps=24,format=yuv420p',
+                '-c:v', 'libx264', temp_video
+            ], check=True)
 
-            # Write the final video file
-            print(f"💾 Rendering video to {output_file}")
-            video.write_videofile(output_file, fps=24, codec='libx264',
-                                  audio_codec='aac', preset='medium')
-
-            # Close clips to free memory
-            video.close()
-            audio_clip.close()
-            for clip in image_clips:
-                clip.close()
+            # Add audio to the video
+            print("🔊 Adding audio to video...")
+            subprocess.run([
+                'ffmpeg', '-y',
+                '-i', temp_video,
+                '-i', audio_path,
+                '-c:v', 'copy',
+                '-c:a', 'aac',
+                '-shortest',  # End when the shortest input ends
+                output_file
+            ], check=True)
 
             print(f"✅ Video saved to: {output_file}")
             return output_file
@@ -346,6 +407,12 @@ class VideoGenerator:
         except Exception as e:
             print(f"❌ Error creating video: {e}")
             return None
+        finally:
+            # Clean up temporary files if needed
+            # Uncomment if you want to delete temp files
+            # import shutil
+            # shutil.rmtree(temp_dir)
+            pass
 
     def process_scripts_to_videos(self):
         """Process all scripts with audio files and create videos for each."""
@@ -402,24 +469,23 @@ class VideoGenerator:
         try:
             print(f"🔄 Combining {len(videos_list)} videos...")
 
-            # Load each video
-            clips = [VideoFileClip(video) for video in videos_list]
+            # Create a temporary file listing all videos
+            temp_dir = os.path.join(self.output_dir, "temp_combine")
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
 
-            # Concatenate all clips
-            final_clip = concatenate_videoclips(clips)
+            concat_list = os.path.join(temp_dir, "concat_list.txt")
+            with open(concat_list, 'w') as f:
+                for video in videos_list:
+                    f.write(f"file '{os.path.abspath(video)}'\n")
 
-            # Add a short fade between clips
-            # This is more complex and involves creating transitions between each clip
-            # For simplicity we're just concatenating them directly
-
-            # Write the final video
-            print(f"💾 Rendering combined video to {output_file}")
-            final_clip.write_videofile(output_file, codec='libx264', audio_codec='aac')
-
-            # Close clips
-            final_clip.close()
-            for clip in clips:
-                clip.close()
+            # Use ffmpeg to concatenate the videos
+            subprocess.run([
+                'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                '-i', concat_list,
+                '-c', 'copy',  # Copy codecs without re-encoding
+                output_file
+            ], check=True)
 
             print(f"✅ Combined video saved to: {output_file}")
             return output_file
@@ -427,3 +493,9 @@ class VideoGenerator:
         except Exception as e:
             print(f"❌ Error combining videos: {e}")
             return None
+        finally:
+            # Clean up temporary files if needed
+            # Uncomment if you want to delete temp files
+            # import shutil
+            # shutil.rmtree(temp_dir)
+            pass

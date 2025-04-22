@@ -1,0 +1,9 @@
+file '/home/alejandro/PycharmProjects/TTS/video_output/temp_9/titled_img_0.jpg'
+duration 4.1496
+file '/home/alejandro/PycharmProjects/TTS/video_output/temp_9/proc_img_1.jpg'
+duration 4.1496
+file '/home/alejandro/PycharmProjects/TTS/video_output/temp_9/proc_img_2.jpg'
+duration 4.1496
+file '/home/alejandro/PycharmProjects/TTS/video_output/temp_9/proc_img_3.jpg'
+duration 4.1496
+file '/home/alejandro/PycharmProjects/TTS/video_output/temp_9/proc_img_4.jpg'
