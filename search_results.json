@@ -1,0 +1,20 @@
+{
+  "duckduckgo": {
+    "engine": "DuckDuckGo",
+    "selector": "'a.searchResult__link'",
+    "links": [],
+    "count": 0
+  },
+  "bing": {
+    "engine": "Bing",
+    "selector": "El selector CSS más apropiado para extraer los enlaces principales de los resultados de búsqueda en Bing sería `a` (para seleccionar todos los elementos de tipo enlace) y agregando una clase o id que pueda identificar los enlaces relacionados con la búsqueda, como por ejemplo: `h2 a.bing-title`.",
+    "links": [],
+    "count": 0
+  },
+  "yahoo": {
+    "engine": "Yahoo",
+    "selector": "\"a[href]\" dentro del selector \"#results .cardReg\"",
+    "links": [],
+    "count": 0
+  }
+}

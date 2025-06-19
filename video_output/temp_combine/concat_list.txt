@@ -1,3 +1,0 @@
-file '/home/alejandro/PycharmProjects/TTS/video_output/video_8_actualización_de_abril_de_xbox.mp4'
-file '/home/alejandro/PycharmProjects/TTS/video_output/video_9_nintendo_switch_2_revelan_fech.mp4'
-file '/home/alejandro/PycharmProjects/TTS/video_output/video_10_xbox_añade_la_transmisión_de_j.mp4'

@@ -114,7 +114,7 @@ class NewsProcessor:
         fuente = noticia["fuente"]
         fecha = noticia["fecha"]
         prompt = f"""
-        Eres un analista de noticias. Evalúa la relevancia del siguiente contenido en relación con la búsqueda objetivo "{target_search}" y determina si se trata de una noticia de carácter internacional/global. También verifica si el artículo es una lista o ranking.
+        Eres un analista de noticias. Evalúa la relevancia del siguiente contenido con algun tipo de relacion con la búsqueda objetivo "{target_search}" y determina si se trata de una noticia de carácter internacional/global. También verifica si el artículo es una lista o ranking.
         Título: "{titulo}"
         Fuente: "{fuente}"
         Fecha: "{fecha}"
@@ -171,7 +171,7 @@ class NewsProcessor:
             print(f"❌ Error evaluando guion: {e}")
             return {"accion": "mantener"}
 
-    def fetch_top_rated_news(self, min_rating=9, limit=10):
+    def fetch_top_rated_news(self, min_rating=9, limit=25):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute("""
@@ -185,7 +185,7 @@ class NewsProcessor:
         conn.close()
         return articles
 
-    def search_and_save_news(self, query, num_results=10):
+    def search_and_save_news(self, query, num_results=25):
         print(f"🔍 Searching for news about: {query}")
         improved = self._improve_search_query(query)
         improved_query = improved.get('titulo_mejorado', query)
