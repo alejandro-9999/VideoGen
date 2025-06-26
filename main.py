@@ -201,7 +201,7 @@ def run_full_pipeline():
     if not os.path.exists(voice_dir) or not any(f.endswith('.wav') for f in os.listdir(voice_dir)):
         print("⚠️ No voice samples found. Cannot proceed with audio generation.")
         print("   Please add .wav files to the voice_sources directory and try again.")
-        return Falsem
+        return False
 
     # Show available voices
     voice_files = [f for f in os.listdir(voice_dir) if f.endswith('.wav')]
@@ -293,7 +293,7 @@ def main():
         elif choice == 4:
             run_full_pipeline()
 
-        # Ask if user wants to continue
+        # Ask if user wants to continuerew
         if not get_yes_no_input("\nDo you want to perform another operation?"):
             print("\nExiting application. Goodbye! 👋")
             break

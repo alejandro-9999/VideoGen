@@ -1,12 +1,13 @@
 # Core dependencies
-torch>=2.0.0
-nltk>=3.8.1
-TTS>=0.21.1
-ollama>=0.1.27
-pydub>=0.25.1
-
+torch
+nltk
+TTS
+ollama
+pydub
 # News scraping and processing
-duckduckgo_search>=4.1.0
-newspaper3k>=0.2.8
-beautifulsoup4>=4.12.2
-requests>=2.31.0
+duckduckgo-search
+newspaper3k
+beautifulsoup4
+requests
+lxml_html_clean
+ffmpeg
