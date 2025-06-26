@@ -1,4 +1,3 @@
-
 import os
 import sqlite3
 import requests
@@ -6,12 +5,40 @@ import json
 from datetime import datetime
 import ollama
 
+# --- Nuevas importaciones para Structured Output ---
+from pydantic import BaseModel, Field, conint, ValidationError
+from typing import Literal, Optional
+
 # Importa las nuevas clases de tu sistema de scraping
 # Asegúrate de que los archivos search/NewsFinder.py y extraction/NewsContentExtractor.py
 # estén en la ruta correcta o que el proyecto esté configurado como un paquete.
 from search.NewsFinder import NewsScraperFactory, NewsScraperManager
 from extraction.NewsContentExtractor import NewsContentExtractor
 
+# ==============================================================================
+# == MODELOS PYDANTIC PARA LA SALIDA ESTRUCTURADA DE OLLAMA
+# ==============================================================================
+
+class ImprovedQuery(BaseModel):
+    """Define la estructura para la consulta de búsqueda mejorada por la IA."""
+    titulo_mejorado: str = Field(description="El título de búsqueda de noticias mejorado y optimizado.")
+
+class NewsEvaluation(BaseModel):
+    """Define la estructura para la evaluación de una noticia."""
+    accion: Literal["mantener", "eliminar"] = Field(description="La acción a tomar con el artículo.")
+    calificacion: Optional[conint(ge=1, le=10)] = Field(
+        default=None,
+        description="Calificación de relevancia de 1 a 10, solo si la acción es 'mantener'."
+    )
+
+class ScriptFragment(BaseModel):
+    """Define la estructura para el guion generado por la IA."""
+    guion: str = Field(description="Fragmento de guion corto, directo, en minúsculas y en un solo párrafo.")
+
+
+# ==============================================================================
+# == CLASE PRINCIPAL DEL PROCESADOR DE NOTICIAS
+# ==============================================================================
 
 class NewsProcessor:
     def __init__(self, processor_db="data.db", scraper_db="news_search.db", model="mistral"):
@@ -31,7 +58,6 @@ class NewsProcessor:
         """Inicializar la base de datos y crear las tablas necesarias"""
         with sqlite3.connect(self.scraper_db_name) as conn:
             cursor = conn.cursor()
-
             # Tabla para búsquedas
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS searches (
@@ -42,7 +68,6 @@ class NewsProcessor:
                     max_results INTEGER
                 )
             ''')
-
             # Tabla para resultados de noticias
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS news_results (
@@ -60,12 +85,10 @@ class NewsProcessor:
                     FOREIGN KEY (search_id) REFERENCES searches (id)
                 )
             ''')
-
             # Índices para mejorar rendimiento
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_search_query ON searches(query)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_engine ON news_results(engine)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_search_id ON news_results(search_id)')
-
             conn.commit()
 
     def _initialize_processor_database(self):
@@ -109,10 +132,13 @@ class NewsProcessor:
         cursor_scrap = conn_scrap.cursor()
         cursor_scrap.execute("DELETE FROM searches")
         cursor_scrap.execute("DELETE FROM news_results")
-        cursor_scrap.execute("DELETE FROM extracted_content")
+        # Asegúrate de que esta tabla exista o quita la línea si no es así
+        if cursor_scrap.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='extracted_content'").fetchone():
+            cursor_scrap.execute("DELETE FROM extracted_content")
         conn_scrap.commit()
         conn_scrap.close()
         print(f"🧹 Tables in '{self.scraper_db_name}' cleared.")
+
 
     def _save_news_to_processor_db(self, titulo, fuente, fecha, url, contenido):
         """Guarda una noticia curada en la base de datos del procesador."""
@@ -125,73 +151,95 @@ class NewsProcessor:
         conn.commit()
         conn.close()
 
-    # --- MÉTODOS DE IA (SIN CAMBIOS) ---
-    def _improve_search_query(self, query):
+    # --- MÉTODOS DE IA (ACTUALIZADOS CON PYDANTIC) ---
+    def _improve_search_query(self, query: str) -> ImprovedQuery:
+        """Mejora una consulta de búsqueda usando un modelo de lenguaje y salida estructurada."""
         prompt = f"""
-        Mejora este título de búsqueda de noticias: "{query}".
-        Devuelve la respuesta en formato JSON con una clave 'titulo_mejorado'.
-        Ejemplo: {{"titulo_mejorado": "Avances recientes en tecnología de fusión nuclear internacional"}}
+        Mejora este título de búsqueda de noticias para que sea más efectivo y amplio: "{query}".
+        Enfócate en términos que produzcan resultados de alta calidad y relevancia internacional.
         """
         try:
-            respuesta = ollama.chat(model=self.model_name, messages=[{"role": "user", "content": prompt}])
-            return json.loads(respuesta['message']['content'])
-        except Exception as e:
-            print(f"Error improving search query: {e}")
-            return {"titulo_mejorado": query}
+            response = ollama.chat(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                format='json'  # Solicita una salida JSON
+            )
+            # Valida y parsea la respuesta usando el modelo Pydantic
+            return ImprovedQuery.model_validate_json(response['message']['content'])
+        except (ValidationError, json.JSONDecodeError, KeyError) as e:
+            print(f"Error improving search query: {e}. Using original query.")
+            return ImprovedQuery(titulo_mejorado=query)
 
-    def _evaluate_news(self, noticia, target_search):
-        # Este método no cambia, sigue trabajando con el diccionario de noticias
-        titulo = noticia["titulo"]
-        contenido = noticia["contenido"]
+    def _evaluate_news(self, noticia: dict, target_search: str) -> NewsEvaluation:
+        """Evalúa la relevancia de una noticia usando un modelo de lenguaje y salida estructurada."""
+        titulo = noticia.get("titulo", "")
+        contenido = noticia.get("contenido", "")
         prompt = f"""
         Eres un analista de noticias. Evalúa la relevancia del siguiente artículo en relación con la búsqueda objetivo "{target_search}" y su importancia internacional.
         Título: "{titulo}"
         Contenido: "{contenido[:500]}..."
-        Si el contenido es irrelevante, un listado/ranking, un error o muy local, responde: {{"accion": "eliminar"}}
-        Si es válido y relevante, responde con: {{"accion": "mantener", "calificacion": <un número del 1 al 10>}}
-        """
-        try:
-            respuesta = ollama.chat(model=self.model_name, messages=[{"role": "user", "content": prompt}])
-            return json.loads(respuesta['message']['content'])
-        except Exception as e:
-            print(f"Error in evaluation: {e}")
-            return {"accion": "mantener", "calificacion": 5}
 
-    def _generate_script(self, title, content):
-        # Sin cambios
-        if not content or len(content) < 50: return "⚠️ Contenido insuficiente."
-        prompt = f"""
-        Genera un fragmento de guion para un video a partir de esta noticia: "{content}".
-        Devuelve un JSON con la clave 'guion'. El guion debe ser corto, directo, en minúsculas y en un solo párrafo.
-        Reemplaza siglas como NASA por N A S A y unidades como km/h por kilómetros por hora.
+        Debes decidir si el artículo debe 'mantener' o 'eliminar'.
+        Si el contenido es irrelevante, un listado/ranking, un error, un comunicado de prensa, o muy local, debe ser eliminado.
+        Si es válido y relevante, asígnale una calificación de 1 (poco relevante) a 10 (muy relevante e importante).
         """
         try:
-            response = ollama.chat(model=self.model_name, messages=[{'role': 'user', 'content': prompt}])
-            data = json.loads(response['message']['content'])
-            return data.get("guion", "⚠️ Guion no encontrado.")
-        except Exception as e:
+            response = ollama.chat(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                format='json'  # Solicita una salida JSON
+            )
+            # Valida y parsea la respuesta
+            return NewsEvaluation.model_validate_json(response['message']['content'])
+        except (ValidationError, json.JSONDecodeError, KeyError) as e:
+            print(f"Error in evaluation: {e}. Defaulting to 'mantener' with rating 5.")
+            return NewsEvaluation(accion="mantener", calificacion=5)
+
+    def _generate_script(self, title: str, content: str) -> str:
+        """Genera un guion a partir de una noticia usando un modelo de lenguaje y salida estructurada."""
+        if not content or len(content) < 50:
+            return "⚠️ Contenido insuficiente."
+
+        prompt = f"""
+        Genera un fragmento de guion para un video de noticias a partir de este artículo:
+        Título: "{title}"
+        Contenido: "{content}"
+
+        El guion debe ser corto, directo, en minúsculas y en un solo párrafo.
+        Es muy importante que reemplaces siglas como NASA por N A S A y unidades como km/h por kilómetros por hora para facilitar la locución.
+        """
+        try:
+            response = ollama.chat(
+                model=self.model_name,
+                messages=[{'role': 'user', 'content': prompt}],
+                format='json' # Solicita una salida JSON
+            )
+            # Valida, parsea y extrae el guion
+            script_obj = ScriptFragment.model_validate_json(response['message']['content'])
+            return script_obj.guion
+        except (ValidationError, json.JSONDecodeError, KeyError) as e:
             return f"Error al generar guion: {e}"
 
-    # --- MÉTODOS DEL NUEVO PIPELINE ---
+    # --- MÉTODOS DEL NUEVO PIPELINE (ACTUALIZADOS PARA USAR LOS NUEVOS MÉTODOS DE IA) ---
 
     def _setup_scrapers(self, headless=True):
         """Configura los scrapers que se usarán en el gestor."""
         print("⚙️ Setting up scrapers...")
-        # Usamos una estrategia de fallback, empezando por el más rápido y fiable
         self.scraper_manager.add_scraper("duckduckgo_api", NewsScraperFactory.create_scraper("duckduckgo_api"))
         self.scraper_manager.add_scraper("google", NewsScraperFactory.create_scraper("google", headless=headless))
-        # self.scraper_manager.add_scraper("yahoo", NewsScraperFactory.create_scraper("yahoo", headless=headless))
         print("✅ Scrapers ready.")
 
     def _run_search_phase(self, query, max_results=25):
         """Fase 1: Utiliza el NewsScraperManager para buscar noticias."""
         print(f"\n==== FASE 1: BÚSQUEDA DE NOTICIAS ====")
-        improved_query = self._improve_search_query(query).get('titulo_mejorado', query)
+        
+        # Obtenemos el objeto Pydantic y luego accedemos al atributo
+        improved_query_obj = self._improve_search_query(query)
+        improved_query = improved_query_obj.titulo_mejorado
         print(f"🔍 Búsqueda mejorada: '{improved_query}'")
 
         db = NewsDatabase(self.scraper_db_name)
         search_id = db.save_search(improved_query, time_filter="w", max_results=max_results)
-
         all_results = self.scraper_manager.search_all(improved_query, time_filter="w", max_results=max_results)
 
         total_found = 0
@@ -200,9 +248,7 @@ class NewsProcessor:
             if results:
                 db.save_news_results(search_id, engine, results)
                 total_found += len(results)
-
-        print(
-            f"💾 Total de {total_found} resultados guardados en '{self.scraper_db_name}' para la búsqueda ID {search_id}.")
+        print(f"💾 Total de {total_found} resultados guardados en '{self.scraper_db_name}' para la búsqueda ID {search_id}.")
 
     def _run_extraction_phase(self, limit=50, max_workers=5):
         """Fase 2: Utiliza NewsContentExtractor para obtener el contenido completo."""
@@ -214,19 +260,13 @@ class NewsProcessor:
         print(f"\n==== FASE 3: INGESTA DE NOTICIAS CURADAS ====")
         conn = sqlite3.connect(self.scraper_db_name)
         cursor = conn.cursor()
-        # Unimos las tablas para obtener toda la información necesaria
         cursor.execute("""
             SELECT 
-                nr.title, 
-                nr.source, 
-                nr.published_date, 
-                ec.url, 
-                ec.content
+                nr.title, nr.source, nr.published_date, ec.url, ec.content
             FROM extracted_content ec
             JOIN news_results nr ON ec.news_result_id = nr.id
             WHERE ec.success = 1 AND ec.word_count > 50
         """)
-
         articles_to_ingest = cursor.fetchall()
         conn.close()
 
@@ -234,7 +274,6 @@ class NewsProcessor:
         for title, source, date, url, content in articles_to_ingest:
             self._save_news_to_processor_db(title, source, date, url, content)
             ingested_count += 1
-
         print(f"✅ Ingesta completa. {ingested_count} artículos transferidos a '{self.processor_db_name}'.")
 
     def evaluate_all_news(self, target_search):
@@ -242,7 +281,6 @@ class NewsProcessor:
         print(f"\n==== FASE 4: EVALUACIÓN CON IA ====")
         conn = sqlite3.connect(self.processor_db_name)
         cursor = conn.cursor()
-        # Seleccionamos solo las noticias no calificadas (calificacion = 0)
         cursor.execute("SELECT id, titulo, contenido FROM noticias WHERE calificacion = 0")
         news_list = cursor.fetchall()
 
@@ -251,14 +289,17 @@ class NewsProcessor:
             news_dict = {"id": id, "titulo": titulo, "contenido": contenido}
             print(f"\n🔎 Evaluando ID {id}: {titulo[:80]}...")
 
+            # _evaluate_news ahora devuelve un objeto NewsEvaluation
             evaluation = self._evaluate_news(news_dict, target_search)
-            print(f"   Resultado: {evaluation}")
+            print(f"   Resultado: {evaluation.model_dump_json(indent=2)}") # Imprime el objeto validado
 
-            if evaluation.get("accion") == "eliminar":
+            # Accedemos a los atributos del objeto Pydantic
+            if evaluation.accion == "eliminar":
                 cursor.execute("DELETE FROM noticias WHERE id=?", (id,))
                 print(f"   🗑️ Eliminado: ID {id}")
             else:
-                rating = evaluation.get("calificacion", 5)
+                # Usamos la calificación del objeto, con un fallback por si es None
+                rating = evaluation.calificacion or 5
                 cursor.execute("UPDATE noticias SET calificacion=? WHERE id=?", (rating, id))
                 print(f"   ⭐ Calificado: ID {id} con {rating}")
 
@@ -266,9 +307,8 @@ class NewsProcessor:
         conn.close()
 
     def summarize_top_news(self, min_rating=8, limit=5):
-        """Fase 5: Genera un resumen de las mejores noticias."""
+        """Fase 5: Genera un resumen de las mejores noticias (sin cambios, no requiere salida estructurada)."""
         print(f"\n==== FASE 5: RESUMEN DE NOTICIAS DESTACADAS ====")
-        # ... (el resto del método no necesita cambios)
         conn = sqlite3.connect(self.processor_db_name)
         cursor = conn.cursor()
         cursor.execute(
@@ -304,12 +344,12 @@ class NewsProcessor:
         print(f"📖 Procesando {len(articles)} artículos para guion...")
         for title, content in articles:
             print(f"\n🎬 Generando guion para: {title}")
+            # _generate_script ahora devuelve directamente el string del guion
             script = self._generate_script(title, content)
+            
             if "Error" in script or "⚠️" in script:
                 print(f"   {script}")
             else:
-                # Aquí podrías añadir la evaluación de calidad del guion si lo deseas
-                # self._evaluate_script_quality(title, script)
                 conn_scripts = sqlite3.connect(self.processor_db_name)
                 cursor_scripts = conn_scripts.cursor()
                 cursor_scripts.execute("INSERT INTO scripts (titulo, guion) VALUES (?, ?)", (title, script))
@@ -330,34 +370,19 @@ class NewsProcessor:
         print(f"🎯 Objetivo de evaluación: {target_search}")
 
         self._setup_scrapers(headless=headless_browser)
-
-        # FASE 1: BÚSQUEDA
         self._run_search_phase(search_query)
-
-        # FASE 2: EXTRACCIÓN
         self._run_extraction_phase()
-
-        # FASE 3: INGESTA
         self._ingest_extracted_news()
-
-        # FASE 4: EVALUACIÓN
         self.evaluate_all_news(target_search)
-
-        # FASE 5: RESUMEN
         self.summarize_top_news()
-
-        # FASE 6: GENERACIÓN DE GUIONES
         self.generate_scripts()
 
         self.scraper_manager.close_all()
         print("\n✅ Pipeline finalizado con éxito.")
 
-
-# --- Clases de soporte (deberían estar en sus propios archivos pero se incluyen aquí para que funcione) ---
-
+# --- Clases de soporte (sin cambios) ---
 class NewsDatabase:
     """Clase de utilidad para interactuar con la BD del scraper."""
-
     def __init__(self, db_path="news_search.db"):
         self.db_path = db_path
 
@@ -366,19 +391,25 @@ class NewsDatabase:
             cursor = conn.cursor()
             cursor.execute('INSERT INTO searches (query, time_filter, max_results) VALUES (?, ?, ?)',
                            (query, time_filter, max_results))
+            conn.commit()
             return cursor.lastrowid
 
     def save_news_results(self, search_id, engine, results):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            news_data = []
             for result in results:
                 result_dict = result.to_dict()
-                cursor.execute('''
-                    INSERT INTO news_results (search_id, engine, title, url, description, published_date, source, snippet)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (search_id, engine, result_dict.get('title'), result_dict.get('url'),
-                      result_dict.get('snippet'), result_dict.get('date'),
-                      result_dict.get('source'), result_dict.get('snippet')))
+                news_data.append((
+                    search_id, engine, result_dict.get('title'), result_dict.get('url'),
+                    result_dict.get('snippet'), result_dict.get('date'),
+                    result_dict.get('source'), result_dict.get('snippet')
+                ))
+            
+            cursor.executemany('''
+                INSERT OR IGNORE INTO news_results (search_id, engine, title, url, description, published_date, source, snippet)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', news_data)
             conn.commit()
 
 
@@ -390,12 +421,8 @@ if __name__ == "__main__":
         model="mistral"
     )
 
-    # Define la consulta de búsqueda
-    # query = "avances en fusión nuclear"
     query = "ultimos descubrimientos en exoplanetas"
 
-    # Ejecuta todo el flujo de trabajo
-    # headless_browser=False es útil para depurar y ver lo que hace el navegador
     processor.run_complete_pipeline(
         search_query=query,
         clear_existing=True,
