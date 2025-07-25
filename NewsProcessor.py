@@ -156,13 +156,13 @@ class NewsProcessor:
         """Mejora una consulta de búsqueda usando un modelo de lenguaje y salida estructurada."""
         prompt = f"""
         Mejora este título de búsqueda de noticias para que sea más efectivo y amplio: "{query}".
-        Enfócate en términos que produzcan resultados de alta calidad y relevancia internacional.
+        Enfócate en términos que produzcan resultados de alta calidad y relevancia internacional, dando el resultado en español.
         """
         try:
             response = ollama.chat(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
-                format='json'  # Solicita una salida JSON
+                format=ImprovedQuery.model_json_schema()
             )
             # Valida y parsea la respuesta usando el modelo Pydantic
             return ImprovedQuery.model_validate_json(response['message']['content'])
@@ -187,7 +187,7 @@ class NewsProcessor:
             response = ollama.chat(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
-                format='json'  # Solicita una salida JSON
+                format=NewsEvaluation.model_json_schema()
             )
             # Valida y parsea la respuesta
             return NewsEvaluation.model_validate_json(response['message']['content'])
@@ -212,7 +212,7 @@ class NewsProcessor:
             response = ollama.chat(
                 model=self.model_name,
                 messages=[{'role': 'user', 'content': prompt}],
-                format='json' # Solicita una salida JSON
+                format=ScriptFragment.model_json_schema()
             )
             # Valida, parsea y extrae el guion
             script_obj = ScriptFragment.model_validate_json(response['message']['content'])
@@ -227,6 +227,10 @@ class NewsProcessor:
         print("⚙️ Setting up scrapers...")
         self.scraper_manager.add_scraper("duckduckgo_api", NewsScraperFactory.create_scraper("duckduckgo_api"))
         self.scraper_manager.add_scraper("google", NewsScraperFactory.create_scraper("google", headless=headless))
+        self.scraper_manager.add_scraper("duckduckgo", NewsScraperFactory.create_scraper("duckduckgo", headless=headless))
+        self.scraper_manager.add_scraper("yahoo", NewsScraperFactory.create_scraper("duckduckgo", headless=headless))
+
+
         print("✅ Scrapers ready.")
 
     def _run_search_phase(self, query, max_results=25):
@@ -421,7 +425,8 @@ if __name__ == "__main__":
         model="mistral"
     )
 
-    query = "ultimos descubrimientos en exoplanetas"
+    query = "ultimas noticias sobre exploracion espacial y noticias de ciencia del espacio"
+
 
     processor.run_complete_pipeline(
         search_query=query,
