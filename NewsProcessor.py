@@ -1,6 +1,4 @@
-import os
 import sqlite3
-import requests
 import json
 from datetime import datetime
 import ollama
@@ -12,8 +10,8 @@ from typing import Literal, Optional
 # Importa las nuevas clases de tu sistema de scraping
 # Asegúrate de que los archivos search/NewsFinder.py y extraction/NewsContentExtractor.py
 # estén en la ruta correcta o que el proyecto esté configurado como un paquete.
-from search.NewsFinder import NewsScraperFactory, NewsScraperManager
-from extraction.NewsContentExtractor import NewsContentExtractor
+from modules.search import NewsScraperFactory, NewsScraperManager
+from modules.extraction.NewsContentExtractor import NewsContentExtractor
 
 # ==============================================================================
 # == MODELOS PYDANTIC PARA LA SALIDA ESTRUCTURADA DE OLLAMA

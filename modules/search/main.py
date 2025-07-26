@@ -1,8 +1,7 @@
 import sqlite3
 import json
-from datetime import datetime
 from pprint import pprint
-from search.NewsFinder import NewsScraperFactory, NewsScraperManager
+from modules.search.NewsFinder import NewsScraperFactory, NewsScraperManager
 
 
 class NewsDatabase:
