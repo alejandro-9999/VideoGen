@@ -4,6 +4,8 @@
 # ==============================================================================
 
 from datetime import datetime
+
+from NewsProcessor import NewsDatabase
 from services.database_manager import DatabaseManager
 from services.ai_service import AIService
 from modules.search.NewsFinder import NewsScraperFactory, NewsScraperManager
@@ -31,11 +33,51 @@ class NewsPipeline:
         print("✅ Scrapers ready.")
 
     def _run_search_phase(self, query):
+        """
+        Fase 1: Búsqueda de noticias.
+        Utiliza el gestor de base de datos central (self.db_manager) para
+        registrar la búsqueda y guardar los resultados.
+        """
         print("\n==== FASE 1: BÚSQUEDA DE NOTICIAS ====")
+
+        # Se mantiene la mejora de la consulta con el servicio de IA
         improved_query_obj = self.ai_service.improve_search_query(query)
         improved_query = improved_query_obj.titulo_mejorado
         print(f"🔍 Búsqueda mejorada: '{improved_query}'")
-        # El resto de la lógica de búsqueda... (usando db_manager para guardar)
+
+        # --- INICIO DE LA CORRECCIÓN ---
+
+        # 1. Se utiliza el gestor de base de datos centralizado (self.db_manager)
+        #    para guardar la búsqueda. Esto asegura que se usa la conexión y
+        #    el archivo de BD correctos (p. ej., 'raw_search_data.db').
+        search_id = self.db_manager.save_search(
+            improved_query,
+            time_filter="w",
+            max_results=self.config['EXTRACTION_LIMIT']
+        )
+
+        # La llamada al gestor de scrapers no cambia
+        all_results = self.scraper_manager.search_all(
+            improved_query,
+            time_filter="w",
+            max_results=self.config['EXTRACTION_LIMIT']
+        )
+
+        total_found = 0
+        for engine, results in all_results.items():
+            print(f"📰 {engine.capitalize()} encontró {len(results)} resultados.")
+            if results:
+                # 2. Se usa de nuevo self.db_manager para guardar los resultados de las noticias.
+                self.db_manager.save_news_results(search_id, engine, results)
+                total_found += len(results)
+
+        # 3. (Opcional pero recomendado) Se obtiene el nombre de la BD del scraper
+        #    desde el gestor para que el mensaje sea siempre preciso.
+        scraper_db_path = self.db_manager.scraper_db
+        print(
+            f"💾 Total de {total_found} resultados guardados en '{scraper_db_path}' para la búsqueda ID {search_id}.")
+
+        # --- FIN DE LA CORRECCIÓN ---
 
     def _run_extraction_phase(self):
         print("\n==== FASE 2: EXTRACCIÓN DE CONTENIDO ====")
@@ -103,10 +145,11 @@ class NewsPipeline:
         self._setup_scrapers(headless=headless_browser)
         self._run_search_phase(search_query)
         self._run_extraction_phase()
+
         self._ingest_extracted_news()
         self._evaluate_all_news(target_search)
         self._summarize_top_news()
         self._generate_scripts()
-
+        #
         self.scraper_manager.close_all()
         print("\n✅ Pipeline finalizado con éxito.")

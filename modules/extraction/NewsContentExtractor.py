@@ -450,6 +450,7 @@ class NewsContentExtractor:
         return result
 
     def process_all_urls(self, max_workers=3, limit=None):
+
         """Procesar todas las URLs pendientes con threading"""
         urls = self.get_unprocessed_urls(limit)
 
