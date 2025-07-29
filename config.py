@@ -5,8 +5,7 @@
 
 # --- Rutas de Bases de Datos ---
 # Se recomienda crear un directorio 'data/' para almacenarlas.
-PROCESSOR_DB_PATH = "data/curated_news.db"
-SCRAPER_DB_PATH = "data/raw_search_data.db"
+DB_PATH = "data/pipeline.db"
 
 # --- Configuración del Modelo de IA ---
 OLLAMA_MODEL = "mistral"

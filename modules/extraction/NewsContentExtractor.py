@@ -43,7 +43,6 @@ class NewsContentExtractor:
         self.db_path = db_path
         self.headless = headless
         self.timeout = timeout
-        self.init_database()
 
         # Headers para requests HTTP
         self.headers = {
@@ -100,21 +99,17 @@ class NewsContentExtractor:
     def get_unprocessed_urls(self, limit=None) -> List[Tuple[int, str]]:
         """Obtener URLs que no han sido procesadas"""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
             query = '''
                 SELECT nr.id, nr.url
                 FROM news_results nr
                 LEFT JOIN extracted_content ec ON nr.id = ec.news_result_id
-                WHERE nr.url IS NOT NULL 
-                AND nr.url != ''
-                AND ec.id IS NULL
+                WHERE nr.url IS NOT NULL AND nr.url != '' AND ec.id IS NULL
             '''
             if limit:
                 query += f' LIMIT {limit}'
+            return conn.execute(query).fetchall()
 
-            cursor.execute(query)
-            return cursor.fetchall()
-
+    
     def create_selenium_driver(self) -> webdriver.Chrome:
         """Crear driver de Selenium con configuración anti-detección"""
         options = Options()
@@ -424,8 +419,8 @@ class NewsContentExtractor:
     def save_extracted_content(self, news_id: int, content: ExtractedContent):
         """Guardar contenido extraído en la base de datos"""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+            # Este código no necesita cambios.
+            conn.execute('''
                 INSERT OR REPLACE INTO extracted_content 
                 (news_result_id, url, title, content, author, publish_date, 
                  method_used, word_count, success, error_message, extraction_time)
