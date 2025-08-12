@@ -8,7 +8,7 @@
 DB_PATH = "data/pipeline.db"
 
 # --- Configuración del Modelo de IA ---
-OLLAMA_MODEL = "mistral"
+OLLAMA_MODEL = "qwen3:0.6b"
 
 # --- Configuración del Pipeline ---
 # Número máximo de resultados a buscar por motor

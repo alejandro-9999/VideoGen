@@ -237,8 +237,11 @@ class NewsProcessor:
         print(f"\n==== FASE 1: BÚSQUEDA DE NOTICIAS ====")
         
         # Obtenemos el objeto Pydantic y luego accedemos al atributo
-        improved_query_obj = self._improve_search_query(query)
-        improved_query = improved_query_obj.titulo_mejorado
+        # improved_query_obj = self._improve_search_query(query)
+        # improved_query = improved_query_obj.titulo_mejorado
+
+        improved_query = query
+
         print(f"🔍 Búsqueda mejorada: '{improved_query}'")
 
         db = NewsDatabase(self.scraper_db_name)

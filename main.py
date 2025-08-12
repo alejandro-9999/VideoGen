@@ -15,8 +15,7 @@ def main():
 
     # 1. Crear instancias de los servicios
     db_manager = DatabaseManager(
-        processor_db_path=config.PROCESSOR_DB_PATH,
-        scraper_db_path=config.SCRAPER_DB_PATH
+        db_path=config.DB_PATH
     )
 
     ai_service = AIService(model_name=config.OLLAMA_MODEL)
@@ -37,7 +36,7 @@ def main():
     pipeline.run_complete_pipeline(
         search_query=query,
         clear_existing=True,
-        headless_browser=True
+        headless_browser=False
     )
 
 

@@ -28,7 +28,7 @@ class NewsPipeline:
         self.scraper_manager.add_scraper("google", NewsScraperFactory.create_scraper("google", headless=headless))
         self.scraper_manager.add_scraper("duckduckgo",
                                          NewsScraperFactory.create_scraper("duckduckgo", headless=headless))
-        self.scraper_manager.add_scraper("yahoo", NewsScraperFactory.create_scraper("duckduckgo", headless=headless))
+        self.scraper_manager.add_scraper("yahoo", NewsScraperFactory.create_scraper("yahoo", headless=headless))
 
         print("✅ Scrapers ready.")
 

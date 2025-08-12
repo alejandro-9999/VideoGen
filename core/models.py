@@ -20,4 +20,4 @@ class NewsEvaluation(BaseModel):
 
 class ScriptFragment(BaseModel):
     """Define la estructura para el guion generado por la IA."""
-    guion: str = Field(description="Fragmento de guion corto, directo, en minúsculas y en un solo párrafo.")
+    guion: str = Field(description="Fragmento de guion corto, directo, en minúsculas y en un solo párrafo, no incluyas hace cuanto fue la noticia, solo el guion")
