@@ -6,7 +6,7 @@ from Generator.Database.Manager import Manager
 def main():
     # Initialize your database manager and AI script service
     db_manager = Manager(db_path="../data/data.db")
-    ai_script_service = AIScriptWriter(model_name="gemma3:12b")
+    ai_script_service = AIScriptWriter(model_name="gemma3:12b", context_window=20480-)
     config = {}  # Add any necessary configuration
 
     # Create the controller
